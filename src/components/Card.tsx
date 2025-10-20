@@ -1,17 +1,33 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Text } from 'react-native';
+import { CardData } from '../types/card';
 
 interface CardProps {
+  card?: CardData;
   faceUp?: boolean;
   isEmpty?: boolean;
 }
 
-export const Card: React.FC<CardProps> = ({ faceUp = true, isEmpty = false }) => {
+const getSuitSymbol = (suit: string): string => {
+  switch (suit) {
+    case 'hearts': return '♥';
+    case 'diamonds': return '♦';
+    case 'clubs': return '♣';
+    case 'spades': return '♠';
+    default: return '';
+  }
+};
+
+const getSuitColor = (suit: string): string => {
+  return suit === 'hearts' || suit === 'diamonds' ? '#DC143C' : '#000000';
+};
+
+export const Card: React.FC<CardProps> = ({ card, faceUp = true, isEmpty = false }) => {
   if (isEmpty) {
     return <View style={[styles.card, styles.emptyCard]} />;
   }
 
-  if (!faceUp) {
+  if (!faceUp || !card) {
     return (
       <View style={[styles.card, styles.faceDownCard]}>
         <View style={styles.cardInnerBorder}>
@@ -21,7 +37,21 @@ export const Card: React.FC<CardProps> = ({ faceUp = true, isEmpty = false }) =>
     );
   }
 
-  return <View style={[styles.card, styles.faceUpCard]} />;
+  const suitSymbol = getSuitSymbol(card.suit);
+  const suitColor = getSuitColor(card.suit);
+
+  return (
+    <View style={[styles.card, styles.faceUpCard]}>
+      <View style={styles.cardContent}>
+        <Text style={[styles.rankText, { color: suitColor }]}>
+          {card.rank}
+        </Text>
+        <Text style={[styles.suitText, { color: suitColor }]}>
+          {suitSymbol}
+        </Text>
+      </View>
+    </View>
+  );
 };
 
 const styles = StyleSheet.create({
@@ -58,5 +88,18 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#FFFFFF',
     borderRadius: 2,
+  },
+  cardContent: {
+    flex: 1,
+    padding: 4,
+    alignItems: 'center',
+  },
+  rankText: {
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  suitText: {
+    fontSize: 20,
+    marginTop: 2,
   },
 });
