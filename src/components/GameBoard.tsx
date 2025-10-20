@@ -1,9 +1,17 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { View, StyleSheet, PanResponder, Animated, TouchableOpacity, Text } from 'react-native';
-import { Card } from './Card';
-import { GameState, CardData } from '../types/card';
+import React, { useEffect, useRef, useState } from 'react';
+import { Animated, PanResponder, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { CardData, GameState } from '../types/card';
 import { dealCards } from '../utils/deck';
-import { canPlaceOnTableau, canPlaceOnFoundation } from '../utils/validation';
+import { canPlaceOnFoundation, canPlaceOnTableau } from '../utils/validation';
+import { CARD_HEIGHT, CARD_WIDTH, Card } from './Card';
+
+// Card drag behavior constants
+const CARD_OVERLAP = 60; // How much cards overlap in tableau
+const CARD_VISIBLE_GAP = CARD_HEIGHT - CARD_OVERLAP; // Visible gap between overlapped cards (24px)
+const DRAG_OFFSET_MIN = 10; // Minimum vertical raise when touching card
+const DRAG_OFFSET_MAX = 60; // Maximum vertical raise when touching card
+const DRAG_TARGET_DISTANCE = 60; // Target distance to keep card top above finger
+const WASTE_PILE_OFFSET = 52; // Vertical offset for waste pile cards
 
 interface DragState {
   source: 'tableau' | 'waste';
@@ -30,6 +38,7 @@ export const GameBoard: React.FC = () => {
   const dropZones = useRef<DropZone[]>([]);
   const foundationRefs = useRef<(View | null)[]>([null, null, null, null]);
   const tableauRefs = useRef<(View | null)[]>([null, null, null, null, null, null, null]);
+  const cardRefs = useRef<{ [key: string]: View | null }>({});
 
   // Remeasure drop zones when game state changes
   useEffect(() => {
@@ -73,8 +82,6 @@ export const GameBoard: React.FC = () => {
   const registerDropZone = (type: 'tableau' | 'foundation', index: number, x: number, y: number, width: number, height: number) => {
     const existingIndex = dropZones.current.findIndex(zone => zone.type === type && zone.index === index);
     const newZone: DropZone = { type, index, x, y, width, height };
-    
-    console.log('Registering drop zone:', newZone);
     
     if (existingIndex >= 0) {
       dropZones.current[existingIndex] = newZone;
@@ -128,16 +135,10 @@ export const GameBoard: React.FC = () => {
     } else if (dropZone.type === 'foundation') {
       const targetPile = newGameState.foundation[dropZone.index];
       isValid = canPlaceOnFoundation(draggedCard.cards, targetPile);
-      console.log('Foundation validation:', { 
-        draggedCards: draggedCard.cards, 
-        targetPile, 
-        isValid 
-      });
     }
 
     // If invalid, don't perform the move
     if (!isValid) {
-      console.log('Drop rejected - invalid move');
       return;
     }
     
@@ -177,26 +178,43 @@ export const GameBoard: React.FC = () => {
   };
 
   const createCardPanResponder = (columnIndex: number, cardIndex: number) => {
+    // TODO: refactor to use react-native-reanimated and react-native-gesture-handler so that dragging runs on UI thread without lag
     return PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onStartShouldSetPanResponderCapture: () => true,
       onMoveShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponderCapture: () => true,
-      onPanResponderGrant: (evt) => {
-        const { pageX, pageY } = evt.nativeEvent;
+      onPanResponderGrant: (evt, gestureState) => {
         const pile = gameState.tableau[columnIndex];
-        
-        // Collect all cards from this index to the end
         const cardsToMove = pile.cards.slice(cardIndex);
         
-        setDraggedCard({
-          source: 'tableau',
-          columnIndex,
-          cardIndex,
-          cards: cardsToMove,
-          x: pageX - 30, // Center the card on touch (card width is 60)
-          y: pageY - 120, // Position cards above the touch point for better visibility
-        });
+        const { pageY } = evt.nativeEvent;
+        
+        // Get the specific card's position for accurate placement
+        const cardKey = `${columnIndex}-${cardIndex}`;
+        const cardRef = cardRefs.current[cardKey];
+        
+        if (cardRef) {
+          cardRef.measureInWindow((cardX, cardY, cardWidth, cardHeight) => {
+            // Use the actual card position for X (no horizontal shift)
+            const finalCardX = cardX;
+            // Calculate vertical offset for pop-up effect
+            const fingerRelativeToCard = pageY - cardY;
+            const verticalOffset = Math.max(
+              -DRAG_OFFSET_MAX, 
+              Math.min(-DRAG_OFFSET_MIN, fingerRelativeToCard - DRAG_TARGET_DISTANCE)
+            );
+            
+            setDraggedCard({
+              source: 'tableau',
+              columnIndex,
+              cardIndex,
+              cards: cardsToMove,
+              x: finalCardX,
+              y: cardY + verticalOffset,
+            });
+          });
+        }
       },
       onPanResponderMove: (evt, gestureState) => {
         pan.setValue({
@@ -210,8 +228,8 @@ export const GameBoard: React.FC = () => {
         const cardY = draggedCard ? draggedCard.y + gestureState.dy : 0;
         
         // Check drop zones using the card's center position
-        const cardCenterX = cardX + 30; // Half of card width (60/2)
-        const cardCenterY = cardY + 42; // Half of card height (84/2)
+        const cardCenterX = cardX + (CARD_WIDTH / 2);
+        const cardCenterY = cardY + (CARD_HEIGHT / 2);
         
         const dropZone = findDropZone(cardCenterX, cardCenterY);
         
@@ -231,20 +249,20 @@ export const GameBoard: React.FC = () => {
       onStartShouldSetPanResponderCapture: () => true,
       onMoveShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponderCapture: () => true,
-      onPanResponderGrant: (evt) => {
-        const { pageX, pageY } = evt.nativeEvent;
-        
-        // Only grab the top card from waste
+      onPanResponderGrant: (evt, gestureState) => {
         if (gameState.waste.length === 0) return;
         const topCard = gameState.waste[gameState.waste.length - 1];
+        
+        // Use the finger position for waste pile since we don't have a ref to the specific card
+        const { pageX, pageY } = evt.nativeEvent;
         
         setDraggedCard({
           source: 'waste',
           columnIndex: -1,
           cardIndex: 0,
           cards: [topCard],
-          x: pageX - 30,
-          y: pageY - 120,
+          x: pageX - (CARD_WIDTH / 2),
+          y: pageY - WASTE_PILE_OFFSET,
         });
       },
       onPanResponderMove: (evt, gestureState) => {
@@ -253,9 +271,16 @@ export const GameBoard: React.FC = () => {
           y: gestureState.dy,
         });
       },
-      onPanResponderRelease: (evt) => {
-        const { pageX, pageY } = evt.nativeEvent;
-        const dropZone = findDropZone(pageX, pageY);
+      onPanResponderRelease: (evt, gestureState) => {
+        // Calculate the final position of the dragged card (not the finger)
+        const cardX = draggedCard ? draggedCard.x + gestureState.dx : 0;
+        const cardY = draggedCard ? draggedCard.y + gestureState.dy : 0;
+        
+        // Check drop zones using the card's center position
+        const cardCenterX = cardX + (CARD_WIDTH / 2);
+        const cardCenterY = cardY + (CARD_HEIGHT / 2);
+        
+        const dropZone = findDropZone(cardCenterX, cardCenterY);
         
         if (dropZone) {
           handleDrop(dropZone);
@@ -296,6 +321,10 @@ export const GameBoard: React.FC = () => {
           return (
             <View
               key={card.id}
+              ref={(ref) => {
+                const cardKey = `${columnIndex}-${cardIndex}`;
+                cardRefs.current[cardKey] = ref;
+              }}
               style={[
                 styles.tableauCard,
                 isLastCard && styles.lastCard,
@@ -410,7 +439,7 @@ export const GameBoard: React.FC = () => {
               key={card.id}
               style={[
                 styles.draggedCardItem,
-                index > 0 && { marginTop: -60 }, // Overlap cards like in tableau
+                index > 0 && { marginTop: -CARD_OVERLAP }, // Overlap cards like in tableau
               ]}
             >
               <Card card={card} faceUp={true} />
@@ -474,8 +503,8 @@ const styles = StyleSheet.create({
   },
   pile: {
     marginRight: 4,
-    width: 60,
-    height: 84,
+    width: CARD_WIDTH,
+    height: CARD_HEIGHT,
   },
   foundationPile: {
     marginRight: 4,
@@ -494,7 +523,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   tableauCard: {
-    marginBottom: -60, // Overlap cards to show cascade effect
+    marginBottom: -CARD_OVERLAP, // Overlap cards to show cascade effect
   },
   lastCard: {
     marginBottom: 0, // Last card should not overlap

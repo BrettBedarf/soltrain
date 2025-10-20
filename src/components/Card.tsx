@@ -1,6 +1,10 @@
 import React from 'react';
-import { View, StyleSheet, Text } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { CardData } from '../types/card';
+
+// Card dimension constants
+export const CARD_WIDTH = 55;
+export const CARD_HEIGHT = 84;
 
 interface CardProps {
   card?: CardData;
@@ -56,8 +60,8 @@ export const Card: React.FC<CardProps> = ({ card, faceUp = true, isEmpty = false
 
 const styles = StyleSheet.create({
   card: {
-    width: 60,
-    height: 84,
+    width: CARD_WIDTH,
+    height: CARD_HEIGHT,
     borderRadius: 6,
     borderWidth: 1,
   },
