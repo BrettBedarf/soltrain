@@ -1,0 +1,3 @@
+[tools]
+node = "25"
+"npm:eas-cli" = "latest"
