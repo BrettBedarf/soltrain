@@ -7,10 +7,11 @@ import { CARD_HEIGHT, CARD_WIDTH, Card } from './Card';
 
 // Game layout constants
 const COLUMN_GAP = 4; // Gap between columns
-const FACE_DOWN_VISIBLE_PERCENT = 20; // Less visible for face-down cards (more overlap)
-const FACE_UP_VISIBLE_PERCENT = 40; // More visible for face-up cards (must be > 25% to show top section)
-const FACE_DOWN_OVERLAP = CARD_HEIGHT * (1 - FACE_DOWN_VISIBLE_PERCENT / 100);
-const FACE_UP_OVERLAP = CARD_HEIGHT * (1 - FACE_UP_VISIBLE_PERCENT / 100);
+// Card overlap as percentage of COLUMN WIDTH (cards are 100% of column width)
+// Card height = (CARD_HEIGHT/CARD_WIDTH) * 100% = 146.15% of column width
+const CARD_HEIGHT_PERCENT = (CARD_HEIGHT / CARD_WIDTH) * 100; // ~146.15%
+const FACE_DOWN_OVERLAP = `${CARD_HEIGHT_PERCENT * 0.85}%`; // % of card height hidden
+const FACE_UP_OVERLAP = `${CARD_HEIGHT_PERCENT * 0.70}%`; // % of card height hidden
 
 // Card drag behavior constants
 const DRAG_OFFSET_MIN = 10; // Minimum vertical raise when touching card
@@ -317,17 +318,19 @@ export const GameBoard: React.FC = () => {
         style={styles.tableauColumn}
       >
         {pile.cards.map((card, cardIndex) => {
-          const isBeingDragged = 
+          const isBeingDragged =
             draggedCard?.source === 'tableau' &&
-            draggedCard?.columnIndex === columnIndex && 
+            draggedCard?.columnIndex === columnIndex &&
             cardIndex >= draggedCard.cardIndex; // Hide this card and all below it
           const isLastCard = cardIndex === numCards - 1;
           const isFaceUp = cardIndex >= numCards - pile.faceUpCount;
+          const isFirstFaceUpCard = isFaceUp && cardIndex === numCards - pile.faceUpCount;
+
           // Allow dragging any face-up card
           const cardPanResponder = isFaceUp ? createCardPanResponder(columnIndex, cardIndex) : null;
-          
-          // Calculate appropriate overlap based on card state
-          const cardOverlap = isFaceUp ? -FACE_UP_OVERLAP : -FACE_DOWN_OVERLAP;
+
+          // First face-up card uses tight overlap to stack properly with face-down cards below
+          const overlap = (isFaceUp && !isFirstFaceUpCard) ? FACE_UP_OVERLAP : FACE_DOWN_OVERLAP;
 
           return (
             <View
@@ -337,7 +340,7 @@ export const GameBoard: React.FC = () => {
                 cardRefs.current[cardKey] = ref;
               }}
               style={[
-                { marginBottom: isLastCard ? 0 : cardOverlap },
+                cardIndex > 0 && { marginTop: `-${overlap}` },
                 isBeingDragged && styles.hiddenCard,
               ]}
               {...(cardPanResponder ? cardPanResponder.panHandlers : {})}
@@ -444,7 +447,7 @@ export const GameBoard: React.FC = () => {
               key={card.id}
               style={[
                 styles.draggedCardItem,
-                index > 0 && { marginTop: -FACE_UP_OVERLAP }, // Overlap cards like in tableau (dragged cards are always face-up)
+                index > 0 && { marginTop: `-${FACE_UP_OVERLAP}` }, // Overlap cards like in tableau (dragged cards are always face-up)
               ]}
             >
               <Card card={card} faceUp={true} />
