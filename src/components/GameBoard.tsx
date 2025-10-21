@@ -37,6 +37,7 @@ interface DropZone {
 export const GameBoard: React.FC = () => {
   const [gameState, setGameState] = useState<GameState>(() => dealCards());
   const [draggedCard, setDraggedCard] = useState<DragState | null>(null);
+  const [isWinner, setIsWinner] = useState(false);
   const pan = useRef(new Animated.ValueXY()).current;
   const dropZones = useRef<DropZone[]>([]);
   const foundationRefs = useRef<(View | null)[]>([null, null, null, null]);
@@ -50,19 +51,42 @@ export const GameBoard: React.FC = () => {
       foundationRefs.current.forEach((ref, index) => {
         if (ref) measureAndRegisterZone(ref, 'foundation', index);
       });
-      
+
       // Measure all tableau columns
       tableauRefs.current.forEach((ref, index) => {
         if (ref) measureAndRegisterZone(ref, 'tableau', index);
       });
     }, 200);
-    
+
     return () => clearTimeout(timer);
   }, [gameState]);
+
+  // Check for win condition
+  useEffect(() => {
+    const totalFoundationCards = gameState.foundation.reduce((sum, pile) => sum + pile.length, 0);
+
+    // Win if all cards are in foundation
+    if (totalFoundationCards === 52) {
+      setIsWinner(true);
+      return;
+    }
+
+    // Also win if all cards are face-up (game is trivially solvable)
+    const allTableauFaceUp = gameState.tableau.every(pile =>
+      pile.cards.length === 0 || pile.faceUpCount === pile.cards.length
+    );
+    const stockAndWasteEmpty = gameState.stock.length === 0 && gameState.waste.length === 0;
+
+		if (allTableauFaceUp && stockAndWasteEmpty) {
+			setIsWinner(true);
+			return;
+		}
+	}, [gameState]);
 
   const handleRefresh = () => {
     setGameState(dealCards());
     setDraggedCard(null);
+    setIsWinner(false);
     pan.setValue({ x: 0, y: 0 });
   };
 
@@ -471,6 +495,13 @@ export const GameBoard: React.FC = () => {
           ))}
         </Animated.View>
       )}
+
+      {/* Winner Banner */}
+      {isWinner && (
+        <View style={styles.winnerBanner}>
+          <Text style={styles.winnerText}>WINNER!</Text>
+        </View>
+      )}
     </View>
   );
 };
@@ -535,5 +566,30 @@ const styles = StyleSheet.create({
   },
   draggedCardItem: {
     // Container for individual dragged cards
+  },
+  winnerBanner: {
+    position: 'absolute',
+    bottom: 100,
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFD700',
+    paddingVertical: 20,
+    paddingHorizontal: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+    zIndex: 1001,
+  },
+  winnerText: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: '#000000',
+    textShadowColor: 'rgba(255, 255, 255, 0.5)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 4,
   },
 });
