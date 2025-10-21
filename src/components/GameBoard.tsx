@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, PanResponder, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Animated, PanResponder, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { CardData, GameState } from '../types/card';
 import { dealCards } from '../utils/deck';
 import { canPlaceOnFoundation, canPlaceOnTableau } from '../utils/validation';
@@ -13,11 +13,7 @@ const CARD_HEIGHT_PERCENT = (CARD_HEIGHT / CARD_WIDTH) * 100; // ~146.15%
 const FACE_DOWN_OVERLAP = `${CARD_HEIGHT_PERCENT * 0.85}%`; // % of card height hidden
 const FACE_UP_OVERLAP = `${CARD_HEIGHT_PERCENT * 0.70}%`; // % of card height hidden
 
-// Card drag behavior constants
-const DRAG_OFFSET_MIN = 10; // Minimum vertical raise when touching card
-const DRAG_OFFSET_MAX = 60; // Maximum vertical raise when touching card
-const DRAG_TARGET_DISTANCE = 60; // Target distance to keep card top above finger
-const WASTE_PILE_OFFSET = 52; // Vertical offset for waste pile cards
+const WASTE_PILE_OFFSET = CARD_HEIGHT * 0.55; // 55% of card height - vertical offset for waste pile cards
 
 interface DragState {
   source: 'tableau' | 'waste';
@@ -194,31 +190,51 @@ export const GameBoard: React.FC = () => {
       onPanResponderGrant: (evt, gestureState) => {
         const pile = gameState.tableau[columnIndex];
         const cardsToMove = pile.cards.slice(cardIndex);
-        
-        const { pageY } = evt.nativeEvent;
-        
+
+        const { pageY: touchPageY } = evt.nativeEvent;
+
         // Get the specific card's position for accurate placement
         const cardKey = `${columnIndex}-${cardIndex}`;
         const cardRef = cardRefs.current[cardKey];
-        
+
         if (cardRef) {
-          cardRef.measureInWindow((cardX, cardY, cardWidth, cardHeight) => {
+          // Use measure to get layout coordinates, then convert to window coordinates
+          cardRef.measure((x, y, cardWidth, cardHeight, cardPageX, cardPageY) => {
+            // cardPageX and cardPageY are the actual screen coordinates of the card
+            const cardX = cardPageX;
+            const cardY = cardPageY;
             // Use the actual card position for X (no horizontal shift)
             const finalCardX = cardX;
-            // Calculate vertical offset for pop-up effect
-            const fingerRelativeToCard = pageY - cardY;
+
+            // Calculate vertical offset using absolute pixel values (finger size is stable)
+            const dragOffsetMin = 10; // Minimum popup in pixels
+            const dragOffsetMax = 60; // Maximum popup in pixels
+            const dragTargetDistance = 60; // Target distance in pixels (original value)
+
+            const fingerRelativeToCard = touchPageY - cardY;
+            // Clamp finger position to be within card boundaries (0 to cardHeight)
+            const clampedFingerPosition = Math.max(0, Math.min(cardHeight, fingerRelativeToCard));
+            const fingerPercentOnCard = (clampedFingerPosition / cardHeight) * 100;
             const verticalOffset = Math.max(
-              -DRAG_OFFSET_MAX, 
-              Math.min(-DRAG_OFFSET_MIN, fingerRelativeToCard - DRAG_TARGET_DISTANCE)
+              -dragOffsetMax,
+              Math.min(-dragOffsetMin, clampedFingerPosition - dragTargetDistance)
             );
-            
+
+            const cardBottom = cardY + cardHeight;
+            const finalCardY = cardY + verticalOffset;
+
+            console.log(`[${Platform.OS}] Touch - cardHeight: ${cardHeight}, cardY: ${cardY}, cardBottom: ${cardBottom}`);
+            console.log(`[${Platform.OS}] touchPageY: ${touchPageY}, fingerRelativeToCard: ${fingerRelativeToCard}, clamped: ${clampedFingerPosition}, fingerPercent: ${fingerPercentOnCard.toFixed(1)}%`);
+            console.log(`[${Platform.OS}] verticalOffset: ${verticalOffset}, dragTargetDistance: ${dragTargetDistance}`);
+            console.log(`[${Platform.OS}] FINAL POSITION - initial cardY: ${cardY}, final cardY: ${finalCardY}`);
+
             setDraggedCard({
               source: 'tableau',
               columnIndex,
               cardIndex,
               cards: cardsToMove,
               x: finalCardX,
-              y: cardY + verticalOffset,
+              y: finalCardY,
               width: cardWidth,
             });
           });

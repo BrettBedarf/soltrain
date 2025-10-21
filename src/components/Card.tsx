@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View, Platform } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { CardData } from '../types/card';
 
 // Card dimension constants (these define the aspect ratio and reference size)
@@ -46,7 +46,7 @@ export const Card: React.FC<CardProps> = ({ card, faceUp = true, isEmpty = false
   const cornerFontSize = cardHeight * 0.18 * fontMultiplier;
   const largeSuitSize = cardHeight * 0.50 * fontMultiplier;
 
-  console.log(`Card height: ${cardHeight}, Corner font: ${cornerFontSize}, Large suit: ${largeSuitSize}`);
+  // console.log(`Card height: ${cardHeight}, Corner font: ${cornerFontSize}, Large suit: ${largeSuitSize}`);
 
   if (isEmpty) {
     return <View style={[styles.card, styles.emptyCard]} onLayout={handleLayout} />;
