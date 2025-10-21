@@ -5,9 +5,14 @@ import { dealCards } from '../utils/deck';
 import { canPlaceOnFoundation, canPlaceOnTableau } from '../utils/validation';
 import { CARD_HEIGHT, CARD_WIDTH, Card } from './Card';
 
+// Game layout constants
+const COLUMN_GAP = 4; // Gap between columns
+const FACE_DOWN_VISIBLE_PERCENT = 20; // Less visible for face-down cards (more overlap)
+const FACE_UP_VISIBLE_PERCENT = 40; // More visible for face-up cards (must be > 25% to show top section)
+const FACE_DOWN_OVERLAP = CARD_HEIGHT * (1 - FACE_DOWN_VISIBLE_PERCENT / 100);
+const FACE_UP_OVERLAP = CARD_HEIGHT * (1 - FACE_UP_VISIBLE_PERCENT / 100);
+
 // Card drag behavior constants
-const CARD_OVERLAP = 60; // How much cards overlap in tableau
-const CARD_VISIBLE_GAP = CARD_HEIGHT - CARD_OVERLAP; // Visible gap between overlapped cards (24px)
 const DRAG_OFFSET_MIN = 10; // Minimum vertical raise when touching card
 const DRAG_OFFSET_MAX = 60; // Maximum vertical raise when touching card
 const DRAG_TARGET_DISTANCE = 60; // Target distance to keep card top above finger
@@ -20,6 +25,7 @@ interface DragState {
   cards: CardData[]; // All cards being dragged (from cardIndex to end of pile)
   x: number;
   y: number;
+  width: number; // Width of the card being dragged
 }
 
 interface DropZone {
@@ -212,6 +218,7 @@ export const GameBoard: React.FC = () => {
               cards: cardsToMove,
               x: finalCardX,
               y: cardY + verticalOffset,
+              width: cardWidth,
             });
           });
         }
@@ -263,6 +270,7 @@ export const GameBoard: React.FC = () => {
           cards: [topCard],
           x: pageX - (CARD_WIDTH / 2),
           y: pageY - WASTE_PILE_OFFSET,
+          width: CARD_WIDTH,
         });
       },
       onPanResponderMove: (evt, gestureState) => {
@@ -298,8 +306,8 @@ export const GameBoard: React.FC = () => {
     const numCards = pile.cards.length;
 
     return (
-      <View 
-        key={columnIndex} 
+      <View
+        key={columnIndex}
         ref={(ref) => {
           tableauRefs.current[columnIndex] = ref;
           if (ref) {
@@ -318,6 +326,9 @@ export const GameBoard: React.FC = () => {
           // Allow dragging any face-up card
           const cardPanResponder = isFaceUp ? createCardPanResponder(columnIndex, cardIndex) : null;
           
+          // Calculate appropriate overlap based on card state
+          const cardOverlap = isFaceUp ? -FACE_UP_OVERLAP : -FACE_DOWN_OVERLAP;
+
           return (
             <View
               key={card.id}
@@ -326,8 +337,7 @@ export const GameBoard: React.FC = () => {
                 cardRefs.current[cardKey] = ref;
               }}
               style={[
-                styles.tableauCard,
-                isLastCard && styles.lastCard,
+                { marginBottom: isLastCard ? 0 : cardOverlap },
                 isBeingDragged && styles.hiddenCard,
               ]}
               {...(cardPanResponder ? cardPanResponder.panHandlers : {})}
@@ -346,63 +356,57 @@ export const GameBoard: React.FC = () => {
       <View style={[styles.container, styles.contentContainer]}>
         {/* Top Row: Stock, Waste, and Foundation Piles */}
         <View style={styles.topRow}>
-          {/* Stock and Waste Piles */}
-          <View style={styles.leftSection}>
-            {/* Stock Pile - Click to draw cards */}
-            <TouchableOpacity style={styles.pile} onPress={handleDrawCard}>
-              {gameState.stock.length > 0 ? (
-                <Card faceUp={false} />
-              ) : (
-                <Card isEmpty />
-              )}
-            </TouchableOpacity>
+          {/* Foundation Pile 1 */}
+          {Array.from({ length: 4 }).map((_, index) => {
+            const foundationPile = gameState.foundation[index];
+            const topCard = foundationPile.length > 0 ? foundationPile[foundationPile.length - 1] : null;
             
-            {/* Waste Pile - Drag from here */}
-            <View 
-              style={styles.pile}
-              {...(gameState.waste.length > 0 ? createWastePanResponder().panHandlers : {})}
-            >
-              {gameState.waste.length > 0 ? (
-                <View style={[
-                  draggedCard?.source === 'waste' && styles.hiddenCard
-                ]}>
-                  <Card 
-                    card={gameState.waste[gameState.waste.length - 1]} 
-                    faceUp={true} 
-                  />
-                </View>
-              ) : (
-                <Card isEmpty />
-              )}
-            </View>
+            return (
+              <View 
+                key={index} 
+                ref={(ref) => {
+                  foundationRefs.current[index] = ref;
+                  if (ref) {
+                    setTimeout(() => measureAndRegisterZone(ref, 'foundation', index), 100);
+                  }
+                }}
+                style={styles.topRowColumn}
+              >
+                <Card card={topCard ?? undefined} isEmpty={!topCard} faceUp={true} />
+              </View>
+            );
+          })}
+
+          {/* Empty column */}
+          <View style={styles.topRowColumn} />
+
+          {/* Waste Pile */}
+          <View
+            style={styles.topRowColumn}
+            {...(gameState.waste.length > 0 ? createWastePanResponder().panHandlers : {})}
+          >
+            {gameState.waste.length > 0 ? (
+              <View style={[
+                draggedCard?.source === 'waste' && styles.hiddenCard
+              ]}>
+                <Card 
+                  card={gameState.waste[gameState.waste.length - 1]} 
+                  faceUp={true} 
+                />
+              </View>
+            ) : (
+              <Card isEmpty />
+            )}
           </View>
 
-          {/* Spacer */}
-          <View style={styles.spacer} />
-
-          {/* Foundation Piles (4 piles) */}
-          <View style={styles.foundationSection}>
-            {Array.from({ length: 4 }).map((_, index) => {
-              const foundationPile = gameState.foundation[index];
-              const topCard = foundationPile.length > 0 ? foundationPile[foundationPile.length - 1] : null;
-              
-              return (
-                <View 
-                  key={index} 
-                  ref={(ref) => {
-                    foundationRefs.current[index] = ref;
-                    if (ref) {
-                      // Measure after a short delay to ensure layout is complete
-                      setTimeout(() => measureAndRegisterZone(ref, 'foundation', index), 100);
-                    }
-                  }}
-                  style={styles.foundationPile}
-                >
-                  <Card card={topCard ?? undefined} isEmpty={!topCard} faceUp={true} />
-                </View>
-              );
-            })}
-          </View>
+          {/* Stock Pile */}
+          <TouchableOpacity style={styles.topRowColumn} onPress={handleDrawCard}>
+            {gameState.stock.length > 0 ? (
+              <Card faceUp={false} />
+            ) : (
+              <Card isEmpty />
+            )}
+          </TouchableOpacity>
         </View>
 
         {/* Tableau: 7 columns */}
@@ -426,6 +430,7 @@ export const GameBoard: React.FC = () => {
             {
               left: draggedCard.x,
               top: draggedCard.y,
+              width: draggedCard.width,
               transform: [
                 { translateX: pan.x },
                 { translateY: pan.y },
@@ -439,7 +444,7 @@ export const GameBoard: React.FC = () => {
               key={card.id}
               style={[
                 styles.draggedCardItem,
-                index > 0 && { marginTop: -CARD_OVERLAP }, // Overlap cards like in tableau
+                index > 0 && { marginTop: -FACE_UP_OVERLAP }, // Overlap cards like in tableau (dragged cards are always face-up)
               ]}
             >
               <Card card={card} faceUp={true} />
@@ -460,21 +465,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#0B6623', // Classic green felt color
   },
   contentContainer: {
-    padding: 16,
-    paddingTop: 60, // Add top padding
+    padding: 8,
+    paddingTop: 150, // Add top padding
   },
   topRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: COLUMN_GAP,
     marginBottom: 32,
   },
-  leftSection: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  foundationSection: {
-    flexDirection: 'row',
-    gap: 12,
+  topRowColumn: {
+    flex: 1,
+    alignItems: 'center',
   },
   refreshButton: {
     position: 'absolute',
@@ -498,35 +499,13 @@ const styles = StyleSheet.create({
     color: '#0B6623',
     fontWeight: 'bold',
   },
-  spacer: {
-    flex: 1,
-  },
-  pile: {
-    marginRight: 4,
-    width: CARD_WIDTH,
-    height: CARD_HEIGHT,
-  },
-  foundationPile: {
-    marginRight: 4,
-    width: 70,
-    height: 94,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
   tableau: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 8,
+    gap: COLUMN_GAP,
   },
   tableauColumn: {
     flex: 1,
     alignItems: 'center',
-  },
-  tableauCard: {
-    marginBottom: -CARD_OVERLAP, // Overlap cards to show cascade effect
-  },
-  lastCard: {
-    marginBottom: 0, // Last card should not overlap
   },
   hiddenCard: {
     opacity: 0,
